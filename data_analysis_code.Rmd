@@ -1,7 +1,7 @@
 ---
 title: "Leeche dataset analysis"
 author: "Bernard, Estrada, Finkel, Marshall & Nelaballi"
-date: "16 Feb, 2022"
+date: "1 June, 2022"
 output: html_document
 editor_options: 
   chunk_output_type: console
@@ -82,7 +82,7 @@ windowsFonts(A = windowsFont("Arial")) #sets font for the entire plot
 
 hist(d.p$H.picta, 
      col = "orange",
-     main = expression(italic("H. picta")),
+     main = "Tiger Leech",
      ylab = "Frequency",
      xlab = " ",
      las = 1,
@@ -95,7 +95,7 @@ hist(d.p$H.picta,
 
 hist(d.z$H.zeylanica, 
      col = "brown", 
-     main  = expression(italic("H. zeylanica")),
+     main  = "Brown Leech",
      xlab = "Counts", 
      ylab = "Frequency",
      las = 1,
@@ -175,7 +175,7 @@ barplot(obs.count.table.p.1$`Average counts`,
         names.arg = obs.count.table.p.1$Observer,
         horiz = TRUE,
         las = 1,
-        xlab = substitute(paste(italic('H. picta'))), 
+        xlab = "Tiger Leech", 
         ylab = "",
         col = "orange",
         cex.lab = 0.9, 
@@ -188,7 +188,7 @@ barplot(obs.count.table.z.1$`Average counts`,
         names.arg = obs.count.table.z.1$Observer,
         horiz = TRUE,
         las = 1, 
-        xlab = substitute(paste(italic('H. zeylanica'))), 
+        xlab = "Brown Leech", 
         ylab = "",
         col = "chocolate4",
         cex.lab = 0.9, 
@@ -266,7 +266,7 @@ barplot(dist.count.table.p$`Average counts`,
         names.arg = dist.count.table.p$`Distance`,
         horiz = TRUE,
         las = 1, 
-        xlab = substitute(paste(italic('H. picta'))), 
+        xlab = "Tiger Leech", 
         ylab = "Segment length (m)",
         col = "orange",
         cex.lab = 0.9, 
@@ -279,7 +279,7 @@ barplot(dist.count.table.z$`Average counts`,
         names.arg = dist.count.table.z$`Distance`,
         horiz = TRUE,
         las = 1, 
-        xlab = substitute(paste(italic('H. zeylanica'))), 
+        xlab = "Brown Leech", 
         ylab = "",
         col = "chocolate4",
         cex.lab = 0.9, 
@@ -324,7 +324,7 @@ d.p$FT <- mapvalues(d.p$FT,
 plot1 <- histogram(H.picta~factor(FT)|factor(Distance),
           data=d.p,
           xlab = "Forest type",
-          ylab = substitute (paste("% of total counts -", italic(" H. picta"))),
+          ylab = substitute (paste("% of total counts - Tiger Leech")),
           col = c("orange"),
           layout = c(1, 11))
 
@@ -347,7 +347,7 @@ d.p$FT <- mapvalues(d.p$FT,
 plot2 <- histogram(H.zeylanica~factor(FT)|factor(Distance),
           data=d.p,
           xlab = "Forest type",
-          ylab = substitute (paste("% of total counts -", italic(" H. zeylanica"))),
+          ylab = substitute (paste("% of total counts - Brown Leech")),
           col = c("chocolate4"),
           layout = c(1, 11))
 
@@ -412,7 +412,7 @@ pander::pander(d2)
 ##Plotting it 
 
 tiff("D:/RESEARCH/leeches/Figures/FigS5.tiff",
-     height = 5, width = 4,
+     height = 5, width = 5,
      units = "in",
      res = 330)
 
@@ -429,7 +429,7 @@ barplot(d2$avg.c.p,
         ylab = "",
         horiz = TRUE,
         las = 1,
-        xlim = c(0, 0.004),
+        xlim = c(0, 0.005),
         cex.lab = 0.9, 
         cex.axis = 0.7,
         cex.names= 0.7,
@@ -443,8 +443,8 @@ barplot(d2$avg.c.z,
         horiz = TRUE,
         xaxt = "n")
 
-legend("topright",
-       legend =c(expression(italic('H. picta')), expression(italic('H. zeylanica'))), 
+legend("bottomright",
+       legend =c(expression("    Tiger Leech"), expression("    Brown Leech")), 
        col=c("orange", "chocolate4"), 
        pch=c(15), 
        bty="n",
@@ -524,7 +524,7 @@ barplot(d2$avg.c.z,
         xaxt = "n")
 
 legend("bottomright",
-       legend=c(expression(italic('H. picta')), expression(italic('H. zeylanica'))), 
+       legend=c(expression("Tiger Leech"), expression("Brown Leech")), 
        col=c("orange", "chocolate4"), 
        pch=c(15), 
        bty="n",
@@ -602,8 +602,8 @@ barplot(d4$avg.z,
         horiz = TRUE,
         xaxt = "n")
 
-legend("topright",
-       legend=c(expression(italic('H. picta')), expression(italic('H. zeylanica'))), 
+legend("bottomright",
+       legend=c(expression("Tiger Leech"), expression("Brown Leech")), 
        col=c("orange", "chocolate4"), 
        pch=c(15), 
        bty="n",
@@ -678,7 +678,7 @@ barplot(d5$avg.z,
         xaxt = "n")
 
 legend("bottomright",
-       legend=c(expression(italic('H. picta')), expression(italic('H. zeylanica'))), 
+       legend=c(expression("Tiger Leech"), expression("Brown Leech")), 
        col=c("orange", "chocolate4"), 
        pch=c(15), 
        bty="n",
@@ -1848,9 +1848,9 @@ axis(side = 2,
 mtext("(a)",line = 0,
        side = 3, at = 0,
        cex = 0.7, adj = 0)
-mtext("      H. picta",line = 0,
+mtext("      Tiger Leech",line = 0,
        side = 3, at = 0,
-       cex = 0.7, adj = 0, font = 3)
+       cex = 0.7, adj = 0, font = 1)
 
 textxy(exp(effects$beta_pic), n, m = c(0,0), labs = round(exp(effects$beta_pic), digits = 2), 
        offset = 0.9, cex = 0.4)
@@ -1891,9 +1891,9 @@ axis(side = 2,
 mtext("(b)",line = 0,
        side = 3, at = 0,
        cex = 0.7, adj = 0)
-mtext("      H. zeylanica",line = 0,
+mtext("      Brown Leech",line = 0,
        side = 3, at = 0,
-       cex = 0.7, adj = 0, font = 3)
+       cex = 0.7, adj = 0, font = 1)
 
 textxy(exp(effects$beta_zey), n, m = c(0,0), labs = round(exp(effects$beta_zey), digits = 2), 
        offset = 0.9, cex = 0.4)
@@ -2790,9 +2790,9 @@ axis(side = 2,
 mtext("(a)",line = 0,
        side = 3, at = 0,
        cex = 0.7, adj = 0)
-mtext("      H. picta",line = 0,
+mtext("      Tiger Leech",line = 0,
        side = 3, at = 0,
-       cex = 0.7, adj = 0, font = 3)
+       cex = 0.7, adj = 0, font = 1)
 
 textxy(exp(effects$beta_pic), n, m = c(0,0), labs = round(exp(effects$beta_pic), digits = 2), 
        offset = 0.9, cex = 0.4)
@@ -2833,9 +2833,9 @@ axis(side = 2,
 mtext("(b)",line = 0,
        side = 3, at = 0,
        cex = 0.7, adj = 0)
-mtext("      H. zeylanica",line = 0,
+mtext("      Brown Leech",line = 0,
        side = 3, at = 0,
-       cex = 0.7, adj = 0, font = 3)
+       cex = 0.7, adj = 0, font = 1)
 
 textxy(exp(effects$beta_zey), n, m = c(0,0), labs = round(exp(effects$beta_zey), digits = 2), 
        offset = 0.9, cex = 0.4)
@@ -3034,9 +3034,9 @@ axis(side = 2,
 mtext("(a)",line = 0,
        side = 3, at = 0,
        cex = 0.7, adj = 0)
-mtext("      H. picta",line = 0,
+mtext("      Tiger Leech",line = 0,
        side = 3, at = 0,
-       cex = 0.7, adj = 0, font = 3)
+       cex = 0.7, adj = 0, font = 1)
 
 textxy(exp(effects$beta_pic), n, m = c(0,0), labs = round(exp(effects$beta_pic), digits = 2), 
        offset = 0.9, cex = 0.4)
@@ -3077,9 +3077,9 @@ axis(side = 2,
 mtext("(b)",line = 0,
        side = 3, at = 0,
        cex = 0.7, adj = 0)
-mtext("      H. zeylanica",line = 0,
+mtext("      Brown Leech",line = 0,
        side = 3, at = 0,
-       cex = 0.7, adj = 0, font = 3)
+       cex = 0.7, adj = 0, font = 1)
 
 textxy(exp(effects$beta_zey), n, m = c(0,0), labs = round(exp(effects$beta_zey), digits = 2), 
        offset = 0.9, cex = 0.4)
@@ -3132,8 +3132,8 @@ d.p$FT <- mapvalues(d.p$FT,
 
 xyplot(H.zeylanica ~ H.picta | FT, data = d.p, 
        group = FT,
-       xlab = expression (paste("Counts of", italic(" H. picta"))), 
-       ylab = expression (paste("Counts of", italic(" H. zeylanica"))), 
+       xlab = expression (paste("Counts of Tiger Leech")), 
+       ylab = expression (paste("Counts of Brown Leech")), 
        cex = 0.5, 
        pch = 16,
        col = c("#0068374d"),
