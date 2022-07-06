@@ -1,0 +1,3140 @@
+---
+title: "Leeche dataset analysis"
+author: "Bernard, Estrada, Finkel, Marshall & Nelaballi"
+date: "16 June, 2022"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+##### Install packages
+
+```{r setup, include=FALSE}
+
+library(tidyr)
+library(dplyr)
+library(plyr)
+library(lubridate)
+library(pander) # pretty table
+library(gridExtra) # par(mfrow) equivalent for ggplot
+library(lme4) # for glmer for neg binom
+library(bbmle)
+library(heplots)  # for the paired plots
+library(sjPlot)
+library(latticeExtra)
+library(calibrate) # for "textxy" function to label points in Incidence Rate Ratio Plots
+
+
+```
+
+##### Setting working directory and reading in files
+
+```{r, echo=TRUE}
+
+# setting WD
+setwd("D:/RESEARCH/leeches")
+
+# read in the leech data
+d <- read.csv("leech_tidied_data.csv")
+
+```
+
+##### Data exploration 
+
+```{r, echo=TRUE}
+
+# going to analyze separately for each species - so creating 2 new objects - not really needed but I prefer to do it this way
+d.p <- d
+d.z <- d
+
+# checking structure of response variable
+str(d.p$H.picta)
+str(d.p$H.zeylanica)
+str(d.z$H.picta)
+str(d.z$H.zeylanica)
+
+# coercing from factor to numeric - You need to use as.character before as.numeric. This is because factors are stored internally as integers with a table to give the factor level labels. Just using as.numeric will only give the internal integer codes.
+d.p$H.picta <- as.numeric(as.character(d.p$H.picta))
+d.p$H.zeylanica <- as.numeric(as.character(d.p$H.zeylanica))
+d.z$H.picta <- as.numeric(as.character(d.z$H.picta))
+d.z$H.zeylanica <- as.numeric(as.character(d.z$H.zeylanica))
+str(d.p$H.picta)
+str(d.p$H.zeylanica)
+str(d.z$H.picta)
+str(d.z$H.zeylanica)
+
+```
+
+##### Data exploration - Frequency of counts - histogram
+
+```{r, echo=TRUE}
+
+tiff("D:/RESEARCH/leeches/Figures/FigS1.tiff",
+     height = 5, width = 4,
+     units = "in",
+     res = 330)
+
+# histogram of both response variables
+
+par(mar=c(4,4,2,2))
+par(mfrow=c(2,1))
+windowsFonts(A = windowsFont("Arial")) #sets font for the entire plot
+
+hist(d.p$H.picta, 
+     col = "orange",
+     main = "Tiger Leech",
+     ylab = "Frequency",
+     xlab = " ",
+     las = 1,
+     xlim = c(0,20),
+     cex.lab = 0.9, 
+     cex.axis = 0.7,
+     cex.main = 1,
+     family = "A")
+
+
+hist(d.z$H.zeylanica, 
+     col = "brown", 
+     main  = "Brown Leech",
+     xlab = "Counts", 
+     ylab = "Frequency",
+     las = 1,
+     xlim = c(0,20),
+     cex.lab = 0.9, 
+     cex.axis = 0.7,
+     cex.main = 1,
+     family = "A")
+
+dev.off()
+
+# zero inflated over-dispersed count data with no known maximum - thus, a negative binomial distribution will be used 
+
+```
+
+##### Data exploration - Is there an observer bias?
+
+```{r, echo=TRUE}
+
+# Plots of leech counts ~ observer
+
+# H.picta
+
+# counts - first I am going to aggregate counts by observer
+obs.picta.count.p <- aggregate(H.picta~Observer.S,
+                   d.p,sum, na.rm=TRUE)
+
+#effort - or how much each observer walked - aggregate distance by observer
+obs.dist.p <- aggregate(Distance~Observer.S,
+                   d.p,sum, na.rm=TRUE)
+
+# now making a table of observer id, counts, effort of each observer
+obs.count.table.p <- cbind(obs.picta.count.p, obs.dist.p$Distance)
+
+colnames(obs.count.table.p) <- c("Observer","Counts","Effort")
+
+obs.count.table.p$average.counts.p <- obs.count.table.p$Counts / obs.count.table.p$Effort
+
+colnames(obs.count.table.p) <- c("Observer","Counts","Effort","Average counts")
+
+pander::pander(obs.count.table.p) 
+
+# H.zeylanica
+
+# counts - first I am going to aggregate counts by observer
+obs.picta.count.z <- aggregate(H.zeylanica~Observer.S,
+                   d.z,sum, na.rm=TRUE)
+
+#effort - or how much each observer walked - aggregate distance by observer
+obs.dist.z <- aggregate(Distance~Observer.S,
+                   d.z,sum, na.rm=TRUE)
+
+# now making a table of observer id, counts, effort of each observer
+obs.count.table.z <- cbind(obs.picta.count.z, obs.dist.p$Distance)
+
+colnames(obs.count.table.z) <- c("Observer","Counts","Effort")
+
+obs.count.table.z$average.counts.z <- obs.count.table.z$Counts / obs.count.table.z$Effort
+
+colnames(obs.count.table.z) <- c("Observer","Counts","Effort","Average counts")
+
+pander::pander(obs.count.table.z)
+
+# now plotting them - using a barplot, with horizontal bars that are ordered
+obs.count.table.p.1 <- obs.count.table.p[order(obs.count.table.p$`Average counts`), ]
+obs.count.table.z.1 <- obs.count.table.z[order(obs.count.table.z$`Average counts`), ]
+
+tiff("D:/RESEARCH/leeches/Figures/FigS2.tiff",
+     height = 5, width = 5,
+     units = "in",
+     res = 330)
+
+par(mfrow=c(1,2),oma = c(0, 0, 2, 0))
+windowsFonts(A = windowsFont("Arial"))
+
+barplot(obs.count.table.p.1$`Average counts`, 
+        names.arg = obs.count.table.p.1$Observer,
+        horiz = TRUE,
+        las = 1,
+        xlab = "Tiger Leech", 
+        ylab = "",
+        col = "orange",
+        cex.lab = 0.9, 
+        cex.axis = 0.7,
+        cex.names= 0.7,
+        family = "A",
+        xlim = c(0,0.003))
+
+barplot(obs.count.table.z.1$`Average counts`, 
+        names.arg = obs.count.table.z.1$Observer,
+        horiz = TRUE,
+        las = 1, 
+        xlab = "Brown Leech", 
+        ylab = "",
+        col = "chocolate4",
+        cex.lab = 0.9, 
+        cex.axis = 0.7,
+        cex.names= 0.7,
+        family = "A",
+        xlim = c(0,0.003))
+
+mtext("Average leech count per meter", side = 3, line = -2, outer = TRUE)
+
+dev.off()
+
+# Jack's counting more leeches when compared to others
+# later the observer column will be coded as Jack vs. rest and included in the models as a fixed effect
+
+```
+
+##### Data exploration - Longer the segment, higher the count?
+
+```{r, echo=TRUE, fig.width=10, fig.height=8}
+
+# H.picta
+
+# first I am going to aggregate counts by distance (segment distance)
+dist.picta.count.p <- aggregate(H.picta~Distance,
+                   d.p,sum, na.rm=TRUE)
+
+# now we also want to know the frequency of our segment distances
+dist.freq.p <- count(d.p$Distance)
+
+# now making a table of distance segment ID, total count per distance segment & frequency of that distance segment multiplied by the segment length = effort
+
+dist.count.table.p <- cbind(dist.picta.count.p, dist.picta.count.p$Distance*dist.freq.p$freq)
+
+colnames(dist.count.table.p) <- c("Distance","Counts","Effort")
+
+dist.count.table.p$average.counts.p <- dist.count.table.p$`Counts`/dist.count.table.p$`Effort` 
+
+colnames(dist.count.table.p) <- c("Distance","Counts","Effort","Average counts")
+
+pander::pander(dist.count.table.p) 
+
+# H.zeylanica
+
+# first I am going to aggregate counts by distance (segment distance)
+dist.picta.count.z <- aggregate(H.zeylanica~Distance,
+                   d.z,sum, na.rm=TRUE)
+
+# now we also want to know the frequency of our segment distances
+dist.freq.z <- count(d.z$Distance)
+
+# now making a table of distance segment ID, total count per distance segment & frequency of that distance segment multiplied by the segment length = effort
+
+dist.count.table.z <- cbind(dist.picta.count.z, dist.picta.count.z$Distance*dist.freq.z$freq)
+
+colnames(dist.count.table.z) <- c("Distance","Counts","Effort")
+
+dist.count.table.z$average.counts.z <- dist.count.table.z$`Counts`/dist.count.table.z$`Effort` 
+
+colnames(dist.count.table.z) <- c("Distance","Counts","Effort","Average counts")
+
+pander::pander(dist.count.table.z) 
+
+# now plotting them - using a barplot, with horizontal bars 
+
+tiff("D:/RESEARCH/leeches/Figures/FigS3.tiff",
+     height = 5, width = 5,
+     units = "in",
+     res = 330)
+
+par(mfrow=c(1,2),oma = c(0, 0, 2, 0))
+windowsFonts(A = windowsFont("Arial"))
+
+barplot(dist.count.table.p$`Average counts`, 
+        names.arg = dist.count.table.p$`Distance`,
+        horiz = TRUE,
+        las = 1, 
+        xlab = "Tiger Leech", 
+        ylab = "Segment length (m)",
+        col = "orange",
+        cex.lab = 0.9, 
+        cex.axis = 0.7,
+        cex.names= 0.7,
+        family = "A",
+        xlim = c(0,0.015))
+
+barplot(dist.count.table.z$`Average counts`, 
+        names.arg = dist.count.table.z$`Distance`,
+        horiz = TRUE,
+        las = 1, 
+        xlab = "Brown Leech", 
+        ylab = "",
+        col = "chocolate4",
+        cex.lab = 0.9, 
+        cex.axis = 0.7,
+        cex.names= 0.7,
+        family = "A",
+        xlim = c(0,0.015))
+
+mtext("Average leech count per meter", side = 3, line = -2, outer = TRUE)
+
+# this seems to suggest that leech counts are not influenced by the length of the segment (i.e. longer segments do not have higher counts) so perhaps rather than the length other features of the segment matter more - such as habitat type? So let's visualize counts by habitat type within each distance class
+
+# first checking levels of FT (forest type)
+summary(d.p$FT)
+summary(d.z$FT)
+
+# grouped barplot H.picta
+
+library(lattice) # https://www.statmethods.net/RiA/lattice.pdf
+
+tiff("D:/RESEARCH/leeches/Figures/FigS4.tiff",
+     height = 14, width = 8,
+     units = "in",
+     res = 330)
+
+d.p$FT <- mapvalues(d.p$FT, 
+          from = c("3.AB",
+                 "2.FS",
+                 "5.LG",
+                 "4.LS",
+                 "7.MO",
+                 "1.PS",
+                 "6.UG"), 
+          to = c("AB",
+                   "FS",
+                   "LG",
+                   "LS",
+                   "MO",
+                   "PS",
+                   "UG"))
+
+plot1 <- histogram(H.picta~factor(FT)|factor(Distance),
+          data=d.p,
+          xlab = "Forest type",
+          ylab = substitute (paste("% of total counts - Tiger Leech")),
+          col = c("orange"),
+          layout = c(1, 11))
+
+d.p$FT <- mapvalues(d.p$FT, 
+          from = c("3.AB",
+                 "2.FS",
+                 "5.LG",
+                 "4.LS",
+                 "7.MO",
+                 "1.PS",
+                 "6.UG"), 
+          to = c("AB",
+                   "FS",
+                   "LG",
+                   "LS",
+                   "MO",
+                   "PS",
+                   "UG"))
+
+plot2 <- histogram(H.zeylanica~factor(FT)|factor(Distance),
+          data=d.p,
+          xlab = "Forest type",
+          ylab = substitute (paste("% of total counts - Brown Leech")),
+          col = c("chocolate4"),
+          layout = c(1, 11))
+
+grid.arrange(plot1,plot2, ncol=2)
+
+dev.off()
+
+d.p$FT <- mapvalues(d.p$FT, 
+          from = c("AB",
+                   "FS",
+                   "LG",
+                   "LS",
+                   "MO",
+                   "PS",
+                   "UG"), 
+          to = c("3.AB",
+                 "2.FS",
+                 "5.LG",
+                 "4.LS",
+                 "7.MO",
+                 "1.PS",
+                 "6.UG"))
+
+# clearly habitat type seems to have an influence more than the length of the segment itself - this begs the question - do we need to include distance as a variable? Thus, length of the segment will not be used as a predictor.
+
+```
+
+##### Data exploration - Do species counts differ across forest types?
+
+```{r, echo=TRUE}
+
+# first calculating the total distance by forest type
+t.dp <- aggregate(Distance~FT,
+                 d.p,sum, na.rm = TRUE) # H.picta
+
+t.dz <- aggregate(Distance~FT,
+                 d.z,sum, na.rm = TRUE) # H.zeylanica
+
+# generating total counts by forest type
+t.cp <- aggregate(H.picta~FT,
+                   d.p,sum, na.rm=TRUE)
+names(t.cp)[2] <- 't.cp'
+
+t.cz <- aggregate(H.zeylanica~FT,
+                 d.z,sum, na.rm=TRUE)
+names(t.cz)[2] <- 't.cz'
+
+# combining these aggregated sums
+d2 <- merge(t.cp, t.cz)
+d2$t.dp <- t.dp$Distance
+d2$t.dz <- t.dz$Distance
+
+# effort not consistent across forest types thus calculating average leech count per meter (total count per forest type/total distance within each forest type) 
+
+d2$avg.p <- d2$t.cp/d2$t.dp
+d2$avg.z <- d2$t.cz/d2$t.dz
+
+colnames(d2) <- c("FT","t.count.p","t.count.z","t.dist.p","t.dist.z","avg.c.p","avg.c.z")
+
+pander::pander(d2)  
+
+##Plotting it 
+
+tiff("D:/RESEARCH/leeches/Figures/FigS5.tiff",
+     height = 5, width = 5,
+     units = "in",
+     res = 330)
+
+par(oma = c(0, 0, 2, 0))
+windowsFonts(A = windowsFont("Arial"))
+ft <- c("PS", "FS", "AB", "LS", "LG", "UG", "MO")
+
+barplot(d2$avg.c.p, 
+        names.arg=ft, 
+        width = 0.5, 
+        space = 2, 
+        col="orange", 
+        xlab = "Average leech count per meter", 
+        ylab = "",
+        horiz = TRUE,
+        las = 1,
+        xlim = c(0, 0.005),
+        cex.lab = 0.9, 
+        cex.axis = 0.7,
+        cex.names= 0.7,
+        family = "A")
+
+barplot(d2$avg.c.z, 
+        width = 0.5, 
+        space = c(3,2,2,2,2,2,2), 
+        col="chocolate4", 
+        add=T,
+        horiz = TRUE,
+        xaxt = "n")
+
+legend("bottomright",
+       legend =c(expression("    Tiger Leech"), expression("    Brown Leech")), 
+       col=c("orange", "chocolate4"), 
+       pch=c(15), 
+       bty="n",
+       cex=0.9)
+
+dev.off()
+
+# both species separate out by forest type
+
+```
+
+##### Data exploration - Do species counts differ across soil moisture levels?
+
+```{r, echo=TRUE}
+
+# first calculating the total distance by humidity segment
+t.dp <- aggregate(Distance~Humidity_Segment,
+                 d.p,sum, na.rm = TRUE) # H.picta
+
+t.dz <- aggregate(Distance~Humidity_Segment,
+                 d.z,sum, na.rm = TRUE) # H.zeylanica
+
+# generating total counts by Humidity_Segment
+t.cp <- aggregate(H.picta~Humidity_Segment,
+                   d.p,sum, na.rm=TRUE)
+names(t.cp)[2] <- 't.cp'
+
+t.cz <- aggregate(H.zeylanica~Humidity_Segment,
+                 d.z,sum, na.rm=TRUE)
+names(t.cz)[2] <- 't.cz'
+
+# combining these aggregated sums
+d2 <- merge(t.cp, t.cz)
+d2$t.dp <- t.dp$Distance
+d2$t.dz <- t.dz$Distance
+
+# effort not consistent thus accounting for it  
+d2$avg.p <- d2$t.cp/d2$t.dp
+d2$avg.z <- d2$t.cz/d2$t.dz
+
+colnames(d2) <- c("Humidity_Segment","t.count.p","t.count.z","t.dist.p","t.dist.z","avg.c.p","avg.c.z")
+
+pander::pander(d2)  
+
+##Plotting it 
+
+tiff("D:/RESEARCH/leeches/Figures/FigS6.tiff",
+     height = 5, width = 4,
+     units = "in",
+     res = 330)
+
+par(oma = c(0, 0, 2, 0))
+windowsFonts(A = windowsFont("Arial"))
+sm <- c("Dry", "Moist", "Wet")
+
+barplot(d2$avg.c.p, 
+        names.arg=sm, 
+        width = 0.5, 
+        space = 2, 
+        col="orange", 
+        xlab = "Average leech count per meter", 
+        ylab = "",
+        horiz = TRUE,
+        las = 1,
+        xlim = c(0, 0.0025),
+        cex.lab = 0.9, 
+        cex.axis = 0.7,
+        cex.names= 0.7,
+        family = "A")
+
+barplot(d2$avg.c.z, 
+        width = 0.5, 
+        space = c(3,2,2), 
+        col="chocolate4", 
+        add=T,
+        horiz = TRUE,
+        xaxt = "n")
+
+legend("bottomright",
+       legend=c(expression("Tiger Leech"), expression("Brown Leech")), 
+       col=c("orange", "chocolate4"), 
+       pch=c(15), 
+       bty="n",
+       cex=0.9)
+
+dev.off()
+
+# as expected average leech counts highest when conditions are wet
+
+```
+
+##### Data exploration - Are species counts influenced by rain history?
+
+```{r, echo=TRUE}
+
+# first calculating the total distance by rain history
+t.dp <- aggregate(Distance~Rain_History,
+                 d.p,sum, na.rm = TRUE) # H.picta
+
+t.dz <- aggregate(Distance~Rain_History,
+                 d.z,sum, na.rm = TRUE) # H.zeylanica
+
+# generating total counts by rain history
+t.cp <- aggregate(H.picta~Rain_History,
+                   d.p,sum, na.rm=TRUE)
+names(t.cp)[2] <- 't.cp'
+
+t.cz <- aggregate(H.zeylanica~Rain_History,
+                 d.z,sum, na.rm=TRUE)
+names(t.cz)[2] <- 't.cz'
+
+# combining these aggregated sums
+d4 <- merge(t.cp, t.cz)
+d4$t.dp <- t.dp$Distance
+d4$t.dz <- t.dz$Distance
+
+# effort not consistent so accounting for that 
+d4$avg.p <- d4$t.cp/d4$t.dp
+d4$avg.z <- d4$t.cz/d4$t.dz
+
+pander::pander(d4)  
+
+# plotting it
+
+tiff("D:/RESEARCH/leeches/Figures/FigS7.tiff",
+     height = 5, width = 4,
+     units = "in",
+     res = 330)
+
+par(oma = c(0, 5, 2, 0)) # outer margin settings
+windowsFonts(A = windowsFont("Arial"))
+rh <- c("Rained over 48 hours ago", "Rained day before yesterday", "Rained yesterday", "Rained last night", "Raining now")
+
+
+barplot(d4$avg.p, 
+        names.arg=rh, 
+        width = 0.5, 
+        space = 2, 
+        col="orange", 
+        xlab = "Average leech count per meter", 
+        ylab = "",
+        horiz = TRUE,
+        las = 1,
+        xlim = c(0, 0.005),
+        cex.lab = 0.9, 
+        cex.axis = 0.7,
+        cex.names= 0.7,
+        family = "A")
+
+barplot(d4$avg.z, 
+        width = 0.5, 
+        space = c(3,2,2,2,2), 
+        col="chocolate4", 
+        add=T,
+        horiz = TRUE,
+        xaxt = "n")
+
+legend("bottomright",
+       legend=c(expression("Tiger Leech"), expression("Brown Leech")), 
+       col=c("orange", "chocolate4"), 
+       pch=c(15), 
+       bty="n",
+       cex=0.9)
+
+dev.off()
+
+```
+
+##### Data exploration - Are species counts influenced by altitude?
+
+```{r, echo=TRUE}
+
+# first calculating the total distance by altitude
+t.dp <- aggregate(Distance~MedAlt,
+                 d.p,sum, NA.rm = TRUE) # H.picta
+
+t.dz <- aggregate(Distance~MedAlt,
+                 d.z,sum, NA.rm = TRUE) # H.zeylanica
+
+# generating total counts by altitude
+t.cp <- aggregate(H.picta~MedAlt,
+                   d.p,sum, NA.rm=TRUE)
+names(t.cp)[2] <- 't.cp'
+
+t.cz <- aggregate(H.zeylanica~MedAlt,
+                 d.z,sum, NA.rm=TRUE)
+names(t.cz)[2] <- 't.cz'
+
+# combining these aggregated sums
+d5 <- merge(t.cp, t.cz)
+d5$t.dp <- t.dp$Distance
+d5$t.dz <- t.dz$Distance
+
+# effort not consistent across altitude so accounting for that
+d5$avg.p <- d5$t.cp/d5$t.dp
+d5$avg.z <- d5$t.cz/d5$t.dz
+
+pander::pander(d5)  
+
+# plotting it
+
+tiff("D:/RESEARCH/leeches/Figures/FigS8.tiff",
+     height = 5, width = 4,
+     units = "in",
+     res = 330)
+
+par(oma = c(0, 0, 2, 0)) # outer margin settings
+windowsFonts(A = windowsFont("Arial"))
+
+barplot(d5$avg.p, 
+        names.arg=d5$MedAlt, 
+        width = 0.5, 
+        space = 2, 
+        col="orange", 
+        xlab = "Average leech count per meter", 
+        ylab = "Altitude (M a.s.l.)",
+        horiz = TRUE,
+        las = 1,
+        xlim = c(0, 0.005),
+        cex.lab = 0.9, 
+        cex.axis = 0.7,
+        cex.names= 0.7,
+        family = "A")
+
+barplot(d5$avg.z, 
+        width = 0.5, 
+        space = c(3,2,2,2,2,2), 
+        col="chocolate4", 
+        add=T,
+        horiz = TRUE,
+        xaxt = "n")
+
+legend("bottomright",
+       legend=c(expression("Tiger Leech"), expression("Brown Leech")), 
+       col=c("orange", "chocolate4"), 
+       pch=c(15), 
+       bty="n",
+       cex=0.9)
+
+dev.off()
+
+```
+
+##### Model fitting - step 1 is to make sure highly correlated predictors are not included in the same model
+
+```{r, echo=TRUE}
+
+### pair-wise correlation among the explanatory variables (better plot using pairs from base R)
+
+### source code: https://www.r-bloggers.com/five-ways-to-visualize-your-pairwise-comparisons/
+
+tiff("D:/RESEARCH/leeches/Figures/FigS10.tiff",
+     height = 5, width = 5,
+     units = "in",
+     res = 330)
+
+panel.cor <- function(x, y, digits=2, prefix="", cex.cor) 
+{
+    usr <- par("usr"); on.exit(par(usr)) 
+    par(usr = c(0, 1, 0, 1)) 
+    r <- abs(cor(x, y)) 
+    txt <- format(c(r, 0.123456789), digits=digits)[1] 
+    txt <- paste(prefix, txt, sep="") 
+    if(missing(cex.cor)) cex <- 0.8/strwidth(txt) 
+ 
+    test <- cor.test(x,y) 
+    # borrowed from printCoefmat
+    Signif <- symnum(test$p.value, corr = FALSE, na = FALSE, 
+                  cutpoints = c(0, 0.001, 0.01, 0.05, 0.1, 1),
+                  symbols = c("***", "**", "*", ".", " ")) 
+ 
+    text(0.5, 0.5, txt, cex = cex * r) 
+    text(.8, .8, Signif, cex=cex, col=2) 
+}
+
+forest_type <- as.factor(d$FT)
+rain_history <- as.factor(d$Rain_History)
+soil_moisture <- as.factor(d$Humidity_Segment)
+altitude <- as.factor(d$MedAlt)
+
+
+
+d.pair <- cbind(forest_type, rain_history, soil_moisture, altitude)
+
+pairs(d.pair, lower.panel=panel.smooth, upper.panel=panel.cor)
+
+dev.off()
+
+# cut-off point - pair-wise correlation of 0.75 and higher. Thus, won't use forest type and altitude in the same model to avoid issues with convergence.
+# later it was anyway seen that the models do not converge when I include forest type and altitude together 
+
+```
+
+##### Model fitting - step 2 centering on mean and standardizing predictors
+
+```{r, echo=TRUE}
+
+# H.picta
+d.p$MedAlt.sc <- (d.p$MedAlt - mean(d.p$MedAlt))/(2*sd(d.p$MedAlt))
+
+# H.zeylanica
+d.z$MedAlt.sc <- (d.z$MedAlt - mean(d.z$MedAlt))/(2*sd(d.z$MedAlt))
+
+# centering and standardizing other leech species to be use as a  predictor
+d.p$H.zeylanica <-  as.numeric(d.p$H.zeylanica)
+
+d.p$H.zeylanica.sc <- (d.p$H.zeylanica - mean(d.p$H.zeylanica))/(2*sd(d.p$H.zeylanica))
+
+d.z$H.picta <-  as.numeric(d.z$H.picta)
+
+d.z$H.picta.sc <- (d.z$H.picta - mean(d.z$H.picta))/(2*sd(d.z$H.picta))
+
+
+# Not doing this for the categorical variables - these are variables with multiple categories so I am not sure what centering and standardizing would mean
+
+```
+
+##### Model fitting - Force R to use a specified factor level as reference 
+
+```{r, echo=TRUE}
+
+# using function relevel to set baseline or reference level
+
+# H. picta
+d.p$Rain_History = relevel(as.factor(d.p$Rain_History), ref="1.over_48_hours") # baseline level for rain history set as over 48 hours
+d.p$Humidity_Segment = relevel(as.factor(d.p$Humidity_Segment), ref="1.dry") # baseline level for humidity set as dry
+d.p$FT = relevel(as.factor(d.p$FT), ref="1.PS") # baseline level for forest type set as PS
+
+
+# H. zeylanica
+d.z$Rain_History = relevel(as.factor(d.z$Rain_History), ref="1.over_48_hours")
+d.z$Humidity_Segment = relevel(as.factor(d.z$Humidity_Segment), ref="1.dry")
+d.z$FT = relevel(as.factor(d.z$FT), ref="1.PS")
+
+```
+
+#####  Observer column coded as Jack vs. rest 
+
+```{r}
+
+# coding observer column as Jack or rest
+# Why - because Jack's counts seem somewhat higher (overall) than rest 
+
+d.p$Observer.J <- mapvalues(d.p$Observer.S, 
+          from = c("> 1 Obs",
+                   "AB",
+                   "DK",
+                   "JK",
+                   "LD",
+                   "MI",
+                   "SL",
+                   "SM",
+                   "SY"), 
+          to = c("2. rest",
+                   "2. rest",
+                   "2. rest",
+                   "1. Jack",
+                   "2. rest",
+                   "2. rest",
+                   "2. rest",
+                   "2. rest",
+                   "2. rest"))
+# check new levels
+summary(d.p$Observer.J)
+
+d.p$Observer.J = relevel(as.factor(d.p$Observer.J), ref="2. rest") # ref level for Observer set as rest
+
+d.z$Observer.J <- mapvalues(d.z$Observer.S, 
+          from = c("> 1 Obs",
+                   "AB",
+                   "DK",
+                   "JK",
+                   "LD",
+                   "MI",
+                   "SL",
+                   "SM",
+                   "SY"), 
+          to = c("2. rest",
+                   "2. rest",
+                   "2. rest",
+                   "1. Jack",
+                   "2. rest",
+                   "2. rest",
+                   "2. rest",
+                   "2. rest",
+                   "2. rest"))
+# check new levels
+summary(d.z$Observer.J)
+
+d.z$Observer.J = relevel(as.factor(d.z$Observer.J), ref="2. rest") # ref level for Observer set as rest
+
+```
+
+
+#### Model fitting - step 3 writing the negative binomial models for overdispersed count data where var and mean are dissimilar, with no known maximum. 
+
+```{r}
+
+# The models - H. picta
+
+m0 <- glmer (H.picta ~ (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m1 <- glmer (H.picta ~ H.zeylanica.sc + 
+               (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m2 <- glmer (H.picta ~ H.zeylanica.sc + 
+               FT + 
+               (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m3 <- glmer (H.picta ~ H.zeylanica.sc + 
+               Rain_History + 
+               (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m4 <- glmer (H.picta ~ H.zeylanica.sc + 
+               Humidity_Segment + 
+               (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m5 <- glmer (H.picta ~ H.zeylanica.sc + 
+               MedAlt.sc + 
+               (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m6 <- glmer (H.picta ~ H.zeylanica.sc + 
+               Observer.J + 
+               (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m7 <- glmer (H.picta ~ H.zeylanica.sc + 
+               FT + 
+               Rain_History + 
+               (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m8 <- glmer (H.picta ~ H.zeylanica.sc + 
+               FT + 
+               Humidity_Segment + 
+               (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m9 <- glmer (H.picta ~ H.zeylanica.sc + 
+               FT + 
+               Observer.J + 
+               (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m10 <- glmer (H.picta ~ H.zeylanica.sc + 
+                FT + 
+                Rain_History + 
+                Humidity_Segment +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m11 <- glmer (H.picta ~ H.zeylanica.sc + 
+                FT + 
+                Rain_History + 
+                Observer.J +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m12 <- glmer (H.picta ~ H.zeylanica.sc +
+                FT +
+                Rain_History + 
+                Humidity_Segment +
+                Observer.J +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m13 <- glmer (H.picta ~ H.zeylanica.sc + 
+                Rain_History + 
+                Humidity_Segment +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m14 <- glmer (H.picta ~ H.zeylanica.sc + 
+                Rain_History + 
+                MedAlt.sc +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m15 <- glmer (H.picta ~ H.zeylanica.sc + 
+                Rain_History + 
+                Observer.J +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m16 <- glmer (H.picta ~ H.zeylanica.sc +
+                Rain_History + 
+                Humidity_Segment +
+                MedAlt.sc +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m17 <- glmer (H.picta ~ H.zeylanica.sc + 
+                Rain_History + 
+                Humidity_Segment +
+                Observer.J +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m18 <- glmer (H.picta ~ H.zeylanica.sc + 
+                Rain_History + 
+                Humidity_Segment +
+                MedAlt.sc +
+                Observer.J +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m19 <- glmer (H.picta ~ H.zeylanica.sc + 
+                Humidity_Segment + 
+                MedAlt.sc +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m20 <- glmer (H.picta ~ H.zeylanica.sc + 
+                Humidity_Segment +
+                Observer.J +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m21 <- glmer (H.picta ~ H.zeylanica.sc +
+                Humidity_Segment +
+                MedAlt.sc +
+                Observer.J +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m22 <- glmer (H.picta ~ H.zeylanica.sc + 
+                MedAlt.sc +
+                Observer.J +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m23 <- glmer (H.picta ~ H.zeylanica.sc +
+                MedAlt.sc +
+                Observer.J +
+                Rain_History +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m24 <- glmer (H.picta ~ H.zeylanica.sc + 
+                MedAlt.sc +
+                Observer.J +
+                Humidity_Segment +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m25 <- glmer (H.picta ~ H.zeylanica.sc + 
+                Observer.J +
+                FT +
+                Humidity_Segment +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m26 <- glmer (H.picta ~ FT +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m27 <- glmer (H.picta ~ FT +
+                Rain_History +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m28 <- glmer (H.picta ~ FT +
+                Humidity_Segment +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m29 <- glmer (H.picta ~ FT +
+                Observer.J +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m30 <- glmer (H.picta ~ FT +
+                Rain_History +
+                Humidity_Segment +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m31 <- glmer (H.picta ~ FT +
+                Rain_History +
+                Observer.J +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m32 <- glmer (H.picta ~ FT +
+                Rain_History +
+                Humidity_Segment +
+                Observer.J +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m33 <- glmer (H.picta ~ FT +
+                Humidity_Segment +
+                Observer.J +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m34 <- glmer (H.picta ~ Rain_History +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m35 <- glmer (H.picta ~ Rain_History +
+                Humidity_Segment +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m36 <- glmer (H.picta ~ Rain_History +
+                MedAlt.sc +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m37 <- glmer (H.picta ~ Rain_History +
+                Observer.J + 
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m38 <- glmer (H.picta ~ Rain_History +
+                Humidity_Segment +
+                MedAlt.sc +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m39 <- glmer (H.picta ~ Rain_History +
+                Humidity_Segment +
+                Observer.J +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m40 <- glmer (H.picta ~ Rain_History +
+                Humidity_Segment +
+                MedAlt.sc +
+                Observer.J +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m41 <- glmer (H.picta ~ Rain_History +
+                MedAlt.sc +
+                Observer.J +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m42 <- glmer (H.picta ~ Humidity_Segment +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m43 <- glmer (H.picta ~ Humidity_Segment +
+                MedAlt.sc +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m44 <- glmer (H.picta ~ Humidity_Segment +
+                Observer.J +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m45 <- glmer (H.picta ~ Humidity_Segment +
+                MedAlt.sc +
+                Observer.J +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m46 <- glmer (H.picta ~ MedAlt.sc +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m47 <- glmer (H.picta ~ MedAlt.sc +
+                Observer.J +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m48 <- glmer (H.picta ~ Observer.J +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+# models with 2-way interactions
+
+m98 <- glmer (H.picta ~ H.zeylanica.sc * FT +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m99 <- glmer (H.picta ~ H.zeylanica.sc * Humidity_Segment +
+                (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m100 <- glmer (H.picta ~ H.zeylanica.sc * Rain_History +
+                 (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m101 <- glmer (H.picta ~ FT * Rain_History +
+                 (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m102 <- glmer (H.picta ~ FT * Humidity_Segment +
+                 (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m103 <- glmer (H.picta ~ Rain_History * Humidity_Segment +
+                 (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m104 <- glmer (H.picta ~ H.zeylanica.sc * MedAlt.sc +
+                 (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m105 <- glmer (H.picta ~ MedAlt.sc * Humidity_Segment +
+                 (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m106 <- glmer (H.picta ~ MedAlt.sc * Rain_History +
+                 (1 | Segment),
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+AICtab(m0,
+       m1,
+       m2,
+       m3,
+       m4,
+       m5,
+       m6,
+       m7,
+       m8,
+       m9,
+       m10,
+       m11,
+       m12,
+       m13,
+       m14,
+       m15,
+       m16,
+       m17,
+       m18,
+       m19,
+       m20,
+       m21,
+       m22,
+       m23,
+       m24,
+       m25,
+       m26,
+       m27,
+       m28,
+       m29,
+       m30,
+       m31,
+       m32,
+       m33,
+       m34,
+       m35,
+       m36,
+       m37,
+       m38,
+       m39,
+       m40,
+       m41,
+       m42,
+       m43,
+       m44,
+       m45,
+       m46,
+       m47,
+       m48,
+       m98,
+       m99,
+       m100,
+       m101,
+       m102,
+       m103,
+       m104,
+       m105,
+       m106,
+       base = TRUE, weights = TRUE)
+
+summary(m12)
+
+```
+
+```{r}
+
+# The models - H.zeylanica
+
+m49 <- glmer (H.zeylanica ~ (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m50 <- glmer (H.zeylanica ~ H.picta.sc +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m51 <- glmer (H.zeylanica ~ H.picta.sc + 
+                FT +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m52 <- glmer (H.zeylanica ~ H.picta.sc + 
+                Rain_History +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m53 <- glmer (H.zeylanica ~ H.picta.sc + 
+                Humidity_Segment +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m54 <- glmer (H.zeylanica ~ H.picta.sc + 
+                MedAlt.sc +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m55 <- glmer (H.zeylanica ~ H.picta.sc + 
+                Observer.J +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m56 <- glmer (H.zeylanica ~ H.picta.sc + 
+                FT + 
+                Rain_History +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m57 <- glmer (H.zeylanica ~ H.picta.sc + 
+                FT + 
+                Humidity_Segment +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m58 <- glmer (H.zeylanica ~ H.picta.sc + 
+                FT + 
+                Observer.J +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m59 <- glmer (H.zeylanica ~ H.picta.sc + 
+                FT + 
+                Rain_History + 
+                Humidity_Segment +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m60 <- glmer (H.zeylanica ~ H.picta.sc + 
+                FT + 
+                Rain_History + 
+                Observer.J +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m61 <- glmer (H.zeylanica ~ H.picta.sc + 
+                FT +
+                Rain_History + 
+                Humidity_Segment +
+                Observer.J +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m62 <- glmer (H.zeylanica ~ H.picta.sc + 
+                Rain_History +
+                Humidity_Segment +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m63 <- glmer (H.zeylanica ~ H.picta.sc + 
+                Rain_History +
+                MedAlt.sc +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m64 <- glmer (H.zeylanica ~ H.picta.sc +
+                Rain_History +
+                Observer.J +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m65 <- glmer (H.zeylanica ~ H.picta.sc + 
+                Rain_History + 
+                Humidity_Segment +
+                MedAlt.sc +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m66 <- glmer (H.zeylanica ~ H.picta.sc + 
+                Rain_History + 
+                Humidity_Segment +
+                Observer.J +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m67 <- glmer (H.zeylanica ~ H.picta.sc + 
+                Rain_History +
+                Humidity_Segment +
+                MedAlt.sc +
+                Observer.J +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m68 <- glmer (H.zeylanica ~ H.picta.sc + 
+                Humidity_Segment + 
+                MedAlt.sc +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m69 <- glmer (H.zeylanica ~ H.picta.sc + 
+                Humidity_Segment +
+                Observer.J +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m70 <- glmer (H.zeylanica ~ H.picta.sc +
+                Humidity_Segment +
+                MedAlt.sc +
+                Observer.J +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m71 <- glmer (H.zeylanica ~ H.picta.sc + 
+                MedAlt.sc +
+                Observer.J +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m72 <- glmer (H.zeylanica ~ H.picta.sc + 
+                MedAlt.sc +
+                Observer.J +
+                Rain_History +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m73 <- glmer (H.zeylanica ~ H.picta.sc + 
+                MedAlt.sc +
+                Observer.J +
+                Humidity_Segment +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m74 <- glmer (H.zeylanica ~ H.picta.sc + 
+                Observer.J +
+                FT +
+                Humidity_Segment +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m75 <- glmer (H.zeylanica ~ FT +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m76 <- glmer (H.zeylanica ~ FT +
+                Rain_History +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m77 <- glmer (H.zeylanica ~ FT +
+                Humidity_Segment +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m78 <- glmer (H.zeylanica ~ FT +
+                Observer.J +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m79 <- glmer (H.zeylanica ~ FT +
+                Rain_History +
+                Humidity_Segment +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m80 <- glmer (H.zeylanica ~ FT +
+                Rain_History +
+                Observer.J +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m81 <- glmer (H.zeylanica ~ FT +
+                Rain_History +
+                Humidity_Segment +
+                Observer.J +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m82 <- glmer (H.zeylanica ~ FT +
+                Humidity_Segment +
+                Observer.J +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m83 <- glmer (H.zeylanica ~ Rain_History +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m84 <- glmer (H.zeylanica ~ Rain_History +
+                Humidity_Segment +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m85 <- glmer (H.zeylanica ~ Rain_History +
+                MedAlt.sc +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m86 <- glmer (H.zeylanica ~ Rain_History + 
+                Observer.J +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m87 <- glmer (H.zeylanica ~ Rain_History +
+                Humidity_Segment +
+                MedAlt.sc +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m88 <- glmer (H.zeylanica ~ Rain_History +
+                Humidity_Segment +
+                Observer.J +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m89 <- glmer (H.zeylanica ~ Rain_History +
+                Humidity_Segment +
+                MedAlt.sc +
+                Observer.J +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m90 <- glmer (H.zeylanica ~ Rain_History +
+                MedAlt.sc +
+                Observer.J +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m91 <- glmer (H.zeylanica ~ Humidity_Segment +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m92 <- glmer (H.zeylanica ~ Humidity_Segment +
+                MedAlt.sc +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m93 <- glmer (H.zeylanica ~ Humidity_Segment +
+                Observer.J +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m94 <- glmer (H.zeylanica ~ Humidity_Segment +
+                MedAlt.sc +
+                Observer.J +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m95 <- glmer (H.zeylanica ~ MedAlt.sc +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m96 <- glmer (H.zeylanica ~ MedAlt.sc +
+                Observer.J +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m97 <- glmer (H.zeylanica ~ Observer.J +
+                (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+# models with 2-way interactions
+
+m107 <- glmer (H.zeylanica ~ H.picta.sc * FT +
+                 (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m108 <- glmer (H.zeylanica ~ H.picta.sc * Humidity_Segment +
+                 (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m109 <- glmer (H.zeylanica ~ H.picta.sc * Rain_History +
+                 (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m110 <- glmer (H.zeylanica ~ FT * Humidity_Segment +
+                 (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m111 <- glmer (H.zeylanica ~ FT * Rain_History +
+                 (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m112 <- glmer (H.zeylanica ~ Humidity_Segment * Rain_History +
+                 (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m113 <- glmer (H.zeylanica ~ H.picta.sc * MedAlt.sc +
+                 (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m114 <- glmer (H.zeylanica ~ MedAlt.sc * Humidity_Segment +
+                 (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m115 <- glmer (H.zeylanica ~ MedAlt.sc * Rain_History +
+                 (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+AICtab(m49,
+       m50,
+       m51,
+       m52,
+       m53,
+       m54,
+       m55,
+       m56,
+       m57,
+       m58,
+       m59,
+       m60,
+       m61,
+       m62,
+       m63,
+       m64,
+       m65,
+       m66,
+       m67,
+       m68,
+       m69,
+       m70,
+       m71,
+       m72,
+       m73,
+       m74,
+       m75,
+       m76,
+       m77,
+       m78,
+       m79,
+       m80,
+       m81,
+       m82,
+       m83,
+       m84,
+       m85,
+       m86,
+       m87,
+       m88,
+       m89,
+       m90,
+       m91,
+       m92,
+       m93,
+       m94,
+       m95,
+       m96,
+       m97,
+       m107,
+       m108,
+       m109,
+       m110,
+       m111,
+       m112,
+       m113,
+       m114,
+       m115,
+       base = TRUE, weights = TRUE)
+
+summary(m61)
+
+```
+
+
+##### Figure 3: Incidence Rate Ratio plots showing odds of counting leeches in response to biotic and abiotic predictors
+
+###### 1. Create table with logit transformed effects and confidence intervals
+
+```{r}
+
+summary(m12) # H picta
+summary(m61) # H zeylanica
+
+# extract beta coef and SE from model outputs
+
+ef.pic <- as.data.frame(summary(m12)$coefficients[, c(1,2)])
+ef.zey <- as.data.frame(summary(m61)$coefficients[, c(1,2)])
+
+# rename rows and columns as necessary, combine into one dataframe
+ef.pic <- ef.pic %>% 
+  dplyr::rename(beta_pic = Estimate, 
+                se_pic = "Std. Error")
+str(ef.pic)
+
+ef.zey <- ef.zey %>% 
+  dplyr::rename(beta_zey = Estimate, 
+                se_zey = "Std. Error")
+str(ef.zey)
+
+effects <- cbind(ef.pic, ef.zey)
+
+rownames(effects)[rownames(effects) == "H.zeylanica.sc"] <- "other_sp"
+
+
+# delete first row (intercept)--not needed for odds ratio figure
+effects <- effects[-1, ]
+effects
+
+# logit transform beta coefficients
+effects <- effects %>% 
+  mutate(exp_pic = exp(beta_pic)) %>% 
+  mutate(exp_zey = exp(beta_zey))
+
+
+# calculate 95% and 50% confidence intervals (The 1.96 and 0.674 z-scores are drawn from a normal distribution). 50% confidence intervals might not be represented in the figure, depending on the visualization. 
+effects <- effects %>% 
+  mutate(q2.5_pic = beta_pic - 1.96*se_pic) %>% 
+  mutate(q2.5_zey = beta_zey - 1.96*se_zey) %>%
+  mutate(q97.5_pic = beta_pic + 1.96*se_pic) %>%
+  mutate(q97.5_zey = beta_zey + 1.96*se_zey) %>% 
+  mutate(q25_pic = beta_pic - 0.674*se_pic) %>% 
+  mutate(q25_zey = beta_zey - 0.674*se_zey) %>%
+  mutate(q75_pic = beta_pic + 0.674*se_pic) %>%
+  mutate(q75_zey = beta_zey + 0.674*se_zey)
+
+# reorder columns
+n <- c(14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
+
+effects <- cbind(effects, n)
+effects <- effects[order(n), ]
+
+```
+
+###### 2. Create the plots:
+
+```{r}
+
+tiff("D:/RESEARCH/leeches/Figures/Fig3.tiff",
+     height = 5, width = 4,
+     units = "in",
+     res = 330)
+
+n <- effects$n
+
+par(mfrow = c(2,1),
+    par(mar = c(2, 1.5, 1, 0),
+        oma = c(0, 4, 0, 0.1)))
+
+## A. H. picta
+
+
+plot(n ~ exp(effects$beta_pic), 
+     col = "orange",
+     pch = 16,
+     cex = 0.8,
+     xlim = c(-0.0, 45),
+     ylim = c(1, 14.5),
+     ylab = "",
+     xlab = "",
+     yaxt = "n", xaxt = "n",
+     bty = 'n',
+     col.axis = "white", 
+     axes = F)
+
+segments(1, 0, 1, 14, lty = 2, lwd = 1)
+
+  # plot error bars
+for (i in 1:14) {
+segments(exp(effects$q2.5_pic[i]), effects$n[i], 
+         exp(effects$q97.5_pic[i]), effects$n[i],
+         lwd = 3, col = "orange")
+}
+
+axis(side = 1, 
+      at = c(0, 5, 10, 15, 20, 25, 30, 35, 40),
+      labels =  c("", "", "", "", "", "", "", "", ""),
+      cex.axis = 0.5,
+      las = 1, 
+      tcl = -0.2, #tick mark lengths; value is negative so they face outward
+      mpg = c(0,0,0))
+
+axis(side = 2, 
+      at = c(1:14),
+      labels =  c("Observer Jack", "Soil is wet", "Soil is moist", "Raining now", "Rained last night", "Rained yest.", 
+                  "Rained day before yest.", "Montane", "Upland granite", "Lowland granite", "Lowland sandstone", 
+                  "Alluvial bench", "Freshwater swamp", "Other leech sp."),
+      cex.axis = 0.5,
+      las = 1, 
+      mgp = c(0, 0.35, 0), #middle number is the only one that's relevant here: the spacing between ticks and tick labels
+      tcl = -0.2) 
+
+mtext("(a)",line = 0,
+       side = 3, at = 0,
+       cex = 0.7, adj = 0)
+mtext("      Tiger Leech",line = 0,
+       side = 3, at = 0,
+       cex = 0.7, adj = 0, font = 1)
+
+textxy(exp(effects$beta_pic), n, m = c(0,0), labs = round(exp(effects$beta_pic), digits = 2), 
+       offset = 0.9, cex = 0.4)
+
+## B. H. zeylenica
+
+plot(n ~ exp(effects$beta_zey), 
+     col = "chocolate4",
+     pch = 16,
+     cex = 0.8,
+     xlim = c(-0.0, 45),
+     ylim = c(1, 14.5),
+     ylab = "",
+     xlab = "",
+     yaxt = "n", xaxt = "n",
+     bty = 'n',
+     col.axis = "white")
+
+segments(1, 0, 1, 14, lty = 2, lwd = 1)
+
+  # plot error bars
+for (i in 1:14) {
+segments(exp(effects$q2.5_zey[i]), effects$n[i], 
+         exp(effects$q97.5_zey[i]), effects$n[i],
+         lwd = 3, col = "chocolate4")
+}
+
+axis(side = 2, 
+      at = c(1:14),
+      labels =  c("Observer Jack", "Soil is wet", "Soil is moist", "Raining now", "Rained last night", "Rained yest.", 
+                  "Rained day before yest.", "Montane", "Upland granite", "Lowland granite", "Lowland sandstone", 
+                  "Alluvial bench", "Freshwater swamp", "Other leech sp."),
+      cex.axis = 0.5,
+      las = 1,
+      mgp = c(0, 0.35, 0),
+      tcl = -0.2)
+
+mtext("(b)",line = 0,
+       side = 3, at = 0,
+       cex = 0.7, adj = 0)
+mtext("      Brown Leech",line = 0,
+       side = 3, at = 0,
+       cex = 0.7, adj = 0, font = 1)
+
+textxy(exp(effects$beta_zey), n, m = c(0,0), labs = round(exp(effects$beta_zey), digits = 2), 
+       offset = 0.9, cex = 0.4)
+
+axis(side = 1, 
+      at = c(0, 5, 10, 15, 20, 25, 30, 35, 40),
+      labels =  c("0", "5", "10", "15", "20", "25", "30", "35", "40"),
+      cex.axis = 0.5,
+      mgp = c(0, 0, 0), 
+      las = 1, 
+      tcl = -0.2) 
+
+mtext (side = 1, text = "Incidence Rate Ratios",
+       outer = FALSE, cex = 0.65, line = 0.8)
+
+
+dev.off()
+
+# Some of our models, including the top models, produced non-convergence warnings, perhaps due to the large number of levels for segment ID (n= 197). Nevertheless, these models did produce interpretable and plausible estimates of effect sizes and standard errors. To confirm these results, we reran our top models without random effects. 
+
+```
+
+```{r}
+
+# Rerunning the models without random effects to check if non-convergence warnings are produced and if not, if the results are comparable to the mixed models.
+# The models - H. picta
+
+m0 <- glm (H.picta ~ 1,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m1 <- glm (H.picta ~ H.zeylanica.sc,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m2 <- glm (H.picta ~ H.zeylanica.sc + FT,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m3 <- glm (H.picta ~ H.zeylanica.sc + Rain_History,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m4 <- glm (H.picta ~ H.zeylanica.sc + Humidity_Segment,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m5 <- glm (H.picta ~ H.zeylanica.sc + MedAlt.sc,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m6 <- glm (H.picta ~ H.zeylanica.sc + Observer.J,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m7 <- glm (H.picta ~ H.zeylanica.sc + FT + Rain_History,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m8 <- glm (H.picta ~ H.zeylanica.sc + FT + Humidity_Segment,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m9 <- glm (H.picta ~ H.zeylanica.sc + FT + Observer.J,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m10 <- glm (H.picta ~ H.zeylanica.sc + 
+              FT + 
+              Rain_History + 
+              Humidity_Segment,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m11 <- glm (H.picta ~ H.zeylanica.sc + 
+              FT + 
+              Rain_History + 
+              Observer.J,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m12 <- glm (H.picta ~ H.zeylanica.sc + 
+              FT + 
+              Rain_History + 
+              Humidity_Segment +
+              Observer.J,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m13 <- glm (H.picta ~ H.zeylanica.sc + 
+              Rain_History + 
+              Humidity_Segment,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m14 <- glm (H.picta ~ H.zeylanica.sc + 
+              Rain_History + 
+              MedAlt.sc,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m15 <- glm (H.picta ~ H.zeylanica.sc + 
+              Rain_History + 
+              Observer.J,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m16 <- glm (H.picta ~ H.zeylanica.sc + 
+              Rain_History + 
+              Humidity_Segment +
+              MedAlt.sc,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m17 <- glm (H.picta ~ H.zeylanica.sc + 
+              Rain_History + 
+              Humidity_Segment +
+              Observer.J,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m18 <- glm (H.picta ~ H.zeylanica.sc + 
+              Rain_History + 
+              Humidity_Segment +
+              MedAlt.sc +
+              Observer.J,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m19 <- glm (H.picta ~ H.zeylanica.sc + 
+              Humidity_Segment + 
+              MedAlt.sc,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m20 <- glm (H.picta ~ H.zeylanica.sc + 
+              Humidity_Segment +
+              Observer.J,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m21 <- glm (H.picta ~ H.zeylanica.sc + 
+              Humidity_Segment +
+              MedAlt.sc +
+              Observer.J,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m22 <- glm (H.picta ~ H.zeylanica.sc + 
+              MedAlt.sc +
+              Observer.J,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m23 <- glm (H.picta ~ H.zeylanica.sc + 
+              MedAlt.sc +
+              Observer.J +
+              Rain_History,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m24 <- glm (H.picta ~ H.zeylanica.sc + 
+              MedAlt.sc +
+              Observer.J +
+              Humidity_Segment,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m25 <- glm (H.picta ~ H.zeylanica.sc + 
+              Observer.J +
+              FT +
+              Humidity_Segment,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m26 <- glm (H.picta ~ FT,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m27 <- glm (H.picta ~ FT +
+              Rain_History,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m28 <- glm (H.picta ~ FT +
+              Humidity_Segment,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m29 <- glm (H.picta ~ FT +
+              Observer.J,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m30 <- glm (H.picta ~ FT +
+              Rain_History +
+              Humidity_Segment,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m31 <- glm (H.picta ~ FT +
+              Rain_History +
+              Observer.J,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m32 <- glm (H.picta ~ FT +
+              Rain_History +
+              Humidity_Segment +
+              Observer.J,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m33 <- glm (H.picta ~ FT +
+              Humidity_Segment +
+              Observer.J,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m34 <- glm (H.picta ~ Rain_History,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m35 <- glm (H.picta ~ Rain_History +
+              Humidity_Segment,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m36 <- glm (H.picta ~ Rain_History +
+              MedAlt.sc,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m37 <- glm (H.picta ~ Rain_History +
+              Observer.J,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m38 <- glm (H.picta ~ Rain_History +
+              Humidity_Segment +
+              MedAlt.sc,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m39 <- glm (H.picta ~ Rain_History +
+              Humidity_Segment +
+              Observer.J,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m40 <- glm (H.picta ~ Rain_History +
+              Humidity_Segment +
+              MedAlt.sc +
+              Observer.J,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m41 <- glm (H.picta ~ Rain_History +
+              MedAlt.sc +
+              Observer.J,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m42 <- glm (H.picta ~ Humidity_Segment,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m43 <- glm (H.picta ~ Humidity_Segment +
+              MedAlt.sc,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m44 <- glm (H.picta ~ Humidity_Segment +
+              Observer.J,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m45 <- glm (H.picta ~ Humidity_Segment +
+              MedAlt.sc +
+              Observer.J,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m46 <- glm (H.picta ~ MedAlt.sc,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m47 <- glm (H.picta ~ MedAlt.sc +
+              Observer.J,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m48 <- glm (H.picta ~ Observer.J,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+# models with 2-way interactions
+
+m98 <- glm (H.picta ~ H.zeylanica.sc * FT,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m99 <- glm (H.picta ~ H.zeylanica.sc * Humidity_Segment,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m100 <- glm (H.picta ~ H.zeylanica.sc * Rain_History,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m101 <- glm (H.picta ~ FT * Rain_History,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m102 <- glm (H.picta ~ FT * Humidity_Segment,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m103 <- glm (H.picta ~ Rain_History * Humidity_Segment,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m104 <- glm (H.picta ~ H.zeylanica.sc * MedAlt.sc,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m105 <- glm (H.picta ~ MedAlt.sc * Humidity_Segment,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m106 <- glm (H.picta ~ MedAlt.sc * Rain_History,
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+AICtab(m0,
+       m1,
+       m2,
+       m3,
+       m4,
+       m5,
+       m6,
+       m7,
+       m8,
+       m9,
+       m10,
+       m11,
+       m12,
+       m13,
+       m14,
+       m15,
+       m16,
+       m17,
+       m18,
+       m19,
+       m20,
+       m21,
+       m22,
+       m23,
+       m24,
+       m25,
+       m26,
+       m27,
+       m28,
+       m29,
+       m30,
+       m31,
+       m32,
+       m33,
+       m34,
+       m35,
+       m36,
+       m37,
+       m38,
+       m39,
+       m40,
+       m41,
+       m42,
+       m43,
+       m44,
+       m45,
+       m46,
+       m47,
+       m48,
+       m98,
+       m99,
+       m100,
+       m101,
+       m102,
+       m103,
+       m104,
+       m105,
+       m106,
+       base = TRUE, weights = TRUE)
+
+summary(m12)
+
+```
+
+```{r}
+
+# The models - H.zeylanica
+
+m49 <- glm (H.zeylanica ~ 1,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m50 <- glm (H.zeylanica ~ H.picta.sc,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m51 <- glm (H.zeylanica ~ H.picta.sc + FT,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m52 <- glm (H.zeylanica ~ H.picta.sc + Rain_History,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m53 <- glm (H.zeylanica ~ H.picta.sc + Humidity_Segment,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m54 <- glm (H.zeylanica ~ H.picta.sc + MedAlt.sc,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m55 <- glm (H.zeylanica ~ H.picta.sc + Observer.J,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m56 <- glm (H.zeylanica ~ H.picta.sc + FT + Rain_History,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m57 <- glm (H.zeylanica ~ H.picta.sc + FT + Humidity_Segment,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m58 <- glm (H.zeylanica ~ H.picta.sc + FT + Observer.J,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m59 <- glm (H.zeylanica ~ H.picta.sc + 
+              FT + 
+              Rain_History + 
+              Humidity_Segment,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m60 <- glm (H.zeylanica ~ H.picta.sc + 
+              FT + 
+              Rain_History + 
+              Observer.J,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m61 <- glm (H.zeylanica ~ H.picta.sc + 
+              FT + 
+              Rain_History + 
+              Humidity_Segment +
+              Observer.J,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m62 <- glm (H.zeylanica ~ H.picta.sc + 
+              Rain_History + 
+              Humidity_Segment,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m63 <- glm (H.zeylanica ~ H.picta.sc + 
+              Rain_History + 
+              MedAlt.sc,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m64 <- glm (H.zeylanica ~ H.picta.sc + 
+              Rain_History + 
+              Observer.J,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m65 <- glm (H.zeylanica ~ H.picta.sc + 
+              Rain_History + 
+              Humidity_Segment +
+              MedAlt.sc,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m66 <- glm (H.zeylanica ~ H.picta.sc + 
+              Rain_History + 
+              Humidity_Segment +
+              Observer.J,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m67 <- glm (H.zeylanica ~ H.picta.sc + 
+              Rain_History + 
+              Humidity_Segment +
+              MedAlt.sc +
+              Observer.J,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m68 <- glm (H.zeylanica ~ H.picta.sc + 
+              Humidity_Segment + 
+              MedAlt.sc,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m69 <- glm (H.zeylanica ~ H.picta.sc + 
+              Humidity_Segment +
+              Observer.J,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m70 <- glm (H.zeylanica ~ H.picta.sc + 
+              Humidity_Segment +
+              MedAlt.sc +
+              Observer.J,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m71 <- glm (H.zeylanica ~ H.picta.sc + 
+              MedAlt.sc +
+              Observer.J,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m72 <- glm (H.zeylanica ~ H.picta.sc + 
+              MedAlt.sc +
+              Observer.J +
+              Rain_History,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m73 <- glm (H.zeylanica ~ H.picta.sc + 
+              MedAlt.sc +
+              Observer.J +
+              Humidity_Segment,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m74 <- glm (H.zeylanica ~ H.picta.sc + 
+              Observer.J +
+              FT +
+              Humidity_Segment,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m75 <- glm (H.zeylanica ~ FT,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m76 <- glm (H.zeylanica ~ FT +
+              Rain_History,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m77 <- glm (H.zeylanica ~ FT +
+              Humidity_Segment,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m78 <- glm (H.zeylanica ~ FT +
+              Observer.J,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m79 <- glm (H.zeylanica ~ FT +
+              Rain_History +
+              Humidity_Segment,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m80 <- glm (H.zeylanica ~ FT +
+              Rain_History +
+              Observer.J,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m81 <- glm (H.zeylanica ~ FT +
+              Rain_History +
+              Humidity_Segment +
+              Observer.J,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m82 <- glm (H.zeylanica ~ FT +
+              Humidity_Segment +
+              Observer.J,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m83 <- glm (H.zeylanica ~ Rain_History,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m84 <- glm (H.zeylanica ~ Rain_History +
+              Humidity_Segment,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m85 <- glm (H.zeylanica ~ Rain_History +
+              MedAlt.sc,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m86 <- glm (H.zeylanica ~ Rain_History +
+              Observer.J,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m87 <- glm (H.zeylanica ~ Rain_History +
+              Humidity_Segment +
+              MedAlt.sc,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m88 <- glm (H.zeylanica ~ Rain_History +
+              Humidity_Segment +
+              Observer.J,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m89 <- glm (H.zeylanica ~ Rain_History +
+              Humidity_Segment +
+              MedAlt.sc +
+              Observer.J,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m90 <- glm (H.zeylanica ~ Rain_History +
+              MedAlt.sc +
+              Observer.J,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m91 <- glm (H.zeylanica ~ Humidity_Segment,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m92 <- glm (H.zeylanica ~ Humidity_Segment +
+              MedAlt.sc,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m93 <- glm (H.zeylanica ~ Humidity_Segment +
+              Observer.J,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m94 <- glm (H.zeylanica ~ Humidity_Segment +
+              MedAlt.sc +
+              Observer.J,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m95 <- glm (H.zeylanica ~ MedAlt.sc,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m96 <- glm (H.zeylanica ~ MedAlt.sc +
+              Observer.J,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m97 <- glm (H.zeylanica ~ Observer.J,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+# models with 2-way interactions
+
+m107 <- glm (H.zeylanica ~ H.picta.sc * FT,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m108 <- glm (H.zeylanica ~ H.picta.sc * Humidity_Segment,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m109 <- glm (H.zeylanica ~ H.picta.sc * Rain_History,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m110 <- glm (H.zeylanica ~ FT * Humidity_Segment,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m111 <- glm (H.zeylanica ~ FT * Rain_History,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m112 <- glm (H.zeylanica ~ Humidity_Segment * Rain_History,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m113 <- glm (H.zeylanica ~ H.picta.sc * MedAlt.sc,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m114 <- glm (H.zeylanica ~ MedAlt.sc * Humidity_Segment,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m115 <- glm (H.zeylanica ~ MedAlt.sc * Rain_History,
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+AICtab(m49,
+       m50,
+       m51,
+       m52,
+       m53,
+       m54,
+       m55,
+       m56,
+       m57,
+       m58,
+       m59,
+       m60,
+       m61,
+       m62,
+       m63,
+       m64,
+       m65,
+       m66,
+       m67,
+       m68,
+       m69,
+       m70,
+       m71,
+       m72,
+       m73,
+       m74,
+       m75,
+       m76,
+       m77,
+       m78,
+       m79,
+       m80,
+       m81,
+       m82,
+       m83,
+       m84,
+       m85,
+       m86,
+       m87,
+       m88,
+       m89,
+       m90,
+       m91,
+       m92,
+       m93,
+       m94,
+       m95,
+       m96,
+       m97,
+       m107,
+       m108,
+       m109,
+       m110,
+       m111,
+       m112,
+       m113,
+       m114,
+       m115,
+       base = TRUE, weights = TRUE)
+
+summary(m61)
+
+# These simpler models did not produce convergence warnings and produced results that were comparable to our multi-level models 
+
+```
+
+
+##### Figure S9: Incidence Rate Ratio plots showing odds of counting leeches in response to biotic and abiotic predictors
+
+###### 1. Create table with logit transformed effects and confidence intervals
+
+```{r}
+
+summary(m12) # H picta
+summary(m61) # H zeylanica
+
+# extract beta coef and SE from model outputs
+
+ef.pic <- as.data.frame(summary(m12)$coefficients[, c(1,2)])
+ef.zey <- as.data.frame(summary(m61)$coefficients[, c(1,2)])
+
+# rename rows and columns as necessary, combine into one dataframe
+ef.pic <- ef.pic %>% 
+  dplyr::rename(beta_pic = Estimate, 
+                se_pic = "Std. Error")
+str(ef.pic)
+
+ef.zey <- ef.zey %>% 
+  dplyr::rename(beta_zey = Estimate, 
+                se_zey = "Std. Error")
+str(ef.zey)
+
+effects <- cbind(ef.pic, ef.zey)
+
+rownames(effects)[rownames(effects) == "H.zeylanica.sc"] <- "other_sp"
+
+
+# delete first row (intercept)--not needed for odds ratio figure
+effects <- effects[-1, ]
+effects
+
+# logit transform beta coefficients
+effects <- effects %>% 
+  mutate(exp_pic = exp(beta_pic)) %>% 
+  mutate(exp_zey = exp(beta_zey))
+
+
+# calculate 95% and 50% confidence intervals (The 1.96 and 0.674 z-scores are drawn from a normal distribution). 50% confidence intervals might not be represented in the figure, depending on the visualization. 
+effects <- effects %>% 
+  mutate(q2.5_pic = beta_pic - 1.96*se_pic) %>% 
+  mutate(q2.5_zey = beta_zey - 1.96*se_zey) %>%
+  mutate(q97.5_pic = beta_pic + 1.96*se_pic) %>%
+  mutate(q97.5_zey = beta_zey + 1.96*se_zey) %>% 
+  mutate(q25_pic = beta_pic - 0.674*se_pic) %>% 
+  mutate(q25_zey = beta_zey - 0.674*se_zey) %>%
+  mutate(q75_pic = beta_pic + 0.674*se_pic) %>%
+  mutate(q75_zey = beta_zey + 0.674*se_zey)
+
+# reorder columns
+n <- c(14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
+
+effects <- cbind(effects, n)
+effects <- effects[order(n), ]
+
+```
+
+###### 2. Create the plots:
+
+```{r}
+
+tiff("D:/RESEARCH/leeches/Figures/FigS9.tiff",
+     height = 5, width = 4,
+     units = "in",
+     res = 330)
+
+n <- effects$n
+
+par(mfrow = c(2,1),
+    par(mar = c(2, 1.5, 1, 0),
+        oma = c(0, 4, 0, 0.1)))
+
+## A. H. picta
+
+
+plot(n ~ exp(effects$beta_pic), 
+     col = "orange",
+     pch = 16,
+     cex = 0.8,
+     xlim = c(-0.0, 45),
+     ylim = c(1, 14.5),
+     ylab = "",
+     xlab = "",
+     yaxt = "n", xaxt = "n",
+     bty = 'n',
+     col.axis = "white", 
+     axes = F)
+
+segments(1, 0, 1, 14, lty = 2, lwd = 1)
+
+  # plot error bars
+for (i in 1:14) {
+segments(exp(effects$q2.5_pic[i]), effects$n[i], 
+         exp(effects$q97.5_pic[i]), effects$n[i],
+         lwd = 3, col = "orange")
+}
+
+axis(side = 1, 
+      at = c(0, 5, 10, 15, 20, 25, 30, 35, 40),
+      labels =  c("", "", "", "", "", "", "", "", ""),
+      cex.axis = 0.5,
+      las = 1, 
+      tcl = -0.2, #tick mark lengths; value is negative so they face outward
+      mpg = c(0,0,0))
+
+axis(side = 2, 
+      at = c(1:14),
+      labels =  c("Observer Jack", "Soil is wet", "Soil is moist", "Raining now", "Rained last night", "Rained yest.", 
+                  "Rained day before yest.", "Montane", "Upland granite", "Lowland granite", "Lowland sandstone", 
+                  "Alluvial bench", "Freshwater swamp", "Other leech sp."),
+      cex.axis = 0.5,
+      las = 1, 
+      mgp = c(0, 0.35, 0), #middle number is the only one that's relevant here: the spacing between ticks and tick labels
+      tcl = -0.2) 
+
+mtext("(a)",line = 0,
+       side = 3, at = 0,
+       cex = 0.7, adj = 0)
+mtext("      Tiger Leech",line = 0,
+       side = 3, at = 0,
+       cex = 0.7, adj = 0, font = 1)
+
+textxy(exp(effects$beta_pic), n, m = c(0,0), labs = round(exp(effects$beta_pic), digits = 2), 
+       offset = 0.9, cex = 0.4)
+
+## B. H. zeylenica
+
+plot(n ~ exp(effects$beta_zey), 
+     col = "chocolate4",
+     pch = 16,
+     cex = 0.8,
+     xlim = c(-0.0, 45),
+     ylim = c(1, 14.5),
+     ylab = "",
+     xlab = "",
+     yaxt = "n", xaxt = "n",
+     bty = 'n',
+     col.axis = "white")
+
+segments(1, 0, 1, 14, lty = 2, lwd = 1)
+
+  # plot error bars
+for (i in 1:14) {
+segments(exp(effects$q2.5_zey[i]), effects$n[i], 
+         exp(effects$q97.5_zey[i]), effects$n[i],
+         lwd = 3, col = "chocolate4")
+}
+
+axis(side = 2, 
+      at = c(1:14),
+      labels =  c("Observer Jack", "Soil is wet", "Soil is moist", "Raining now", "Rained last night", "Rained yest.", 
+                  "Rained day before yest.", "Montane", "Upland granite", "Lowland granite", "Lowland sandstone", 
+                  "Alluvial bench", "Freshwater swamp", "Other leech sp."),
+      cex.axis = 0.5,
+      las = 1,
+      mgp = c(0, 0.35, 0),
+      tcl = -0.2)
+
+mtext("(b)",line = 0,
+       side = 3, at = 0,
+       cex = 0.7, adj = 0)
+mtext("      Brown Leech",line = 0,
+       side = 3, at = 0,
+       cex = 0.7, adj = 0, font = 1)
+
+textxy(exp(effects$beta_zey), n, m = c(0,0), labs = round(exp(effects$beta_zey), digits = 2), 
+       offset = 0.9, cex = 0.4)
+
+axis(side = 1, 
+      at = c(0, 5, 10, 15, 20, 25, 30, 35, 40),
+      labels =  c("0", "5", "10", "15", "20", "25", "30", "35", "40"),
+      cex.axis = 0.5,
+      mgp = c(0, 0, 0), 
+      las = 1, 
+      tcl = -0.2) 
+
+mtext (side = 1, text = "Incidence Rate Ratios",
+       outer = FALSE, cex = 0.65, line = 0.8)
+
+
+dev.off()
+```
+
+
+
+#### Potential role of spatial partitioning
+
+```{r}
+
+# If the leech species were perfectly spatially separated (that is when when one is present the other will be absent) then either forest type or other leech species would be equally good predictors. But, that is not the case here. There is an area of overlap. To check if there is niche separation or if some other aspect associated with forest type matters more (within this area of overlap), we are running the top model (Other leech species+forest type+rain history+humidity segment+observer) first without the other leech species as a predictor and then again without forest type as a predictor.
+
+#H.picta
+
+m1 <- glmer (H.picta ~ FT + 
+               Humidity_Segment + 
+               Rain_History +
+               Observer.J +
+               (1 | Segment), 
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+m2 <- glmer (H.picta ~ H.zeylanica.sc + 
+               Humidity_Segment + 
+               Rain_History +
+               Observer.J +
+               (1 | Segment), 
+    data = d.p, 
+    family = negative.binomial(theta = 1))
+
+AICctab(m1,
+       m2,
+       base = TRUE, weights = TRUE)
+
+summary(m1)
+
+#H. zeylanica
+
+m3 <- glmer (H.zeylanica ~ FT +
+               Humidity_Segment +
+               Rain_History +
+               Observer.J +
+               (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+m4 <- glmer (H.zeylanica ~ H.picta.sc +
+               Humidity_Segment +
+               Rain_History +
+               Observer.J +
+               (1 | Segment),
+    data = d.z, 
+    family = negative.binomial(theta = 1))
+
+AICctab(m3,
+       m4,
+       base = TRUE, weights = TRUE)
+
+summary(m3)
+
+```
+
+##### Figure S11: Incidence Rate Ratio plots for spatial partitioning models
+
+###### 1. Create table with logit transformed effects and confidence intervals
+
+```{r}
+
+summary(m1) # H picta
+summary(m3) # H zeylanica
+
+# extract beta coef and SE from model outputs
+
+ef.pic <- as.data.frame(summary(m1)$coefficients[, c(1,2)])
+ef.zey <- as.data.frame(summary(m3)$coefficients[, c(1,2)])
+
+# rename rows and columns as necessary, combine into one dataframe
+ef.pic <- ef.pic %>% 
+  dplyr::rename(beta_pic = Estimate, 
+                se_pic = "Std. Error")
+str(ef.pic)
+
+ef.zey <- ef.zey %>% 
+  dplyr::rename(beta_zey = Estimate, 
+                se_zey = "Std. Error")
+str(ef.zey)
+
+effects <- cbind(ef.pic, ef.zey)
+
+rownames(effects)[rownames(effects) == "H.zeylanica.sc"] <- "other_sp"
+
+
+# delete first row (intercept)--not needed for odds ratio figure
+effects <- effects[-1, ]
+effects
+
+# logit transform beta coefficients
+effects <- effects %>% 
+  mutate(exp_pic = exp(beta_pic)) %>% 
+  mutate(exp_zey = exp(beta_zey))
+
+
+# calculate 95% and 50% confidence intervals (The 1.96 and 0.674 z-scores are drawn from a normal distribution). 50% confidence intervals might not be represented in the figure, depending on the visualization. 
+effects <- effects %>% 
+  mutate(q2.5_pic = beta_pic - 1.96*se_pic) %>% 
+  mutate(q2.5_zey = beta_zey - 1.96*se_zey) %>%
+  mutate(q97.5_pic = beta_pic + 1.96*se_pic) %>%
+  mutate(q97.5_zey = beta_zey + 1.96*se_zey) %>% 
+  mutate(q25_pic = beta_pic - 0.674*se_pic) %>% 
+  mutate(q25_zey = beta_zey - 0.674*se_zey) %>%
+  mutate(q75_pic = beta_pic + 0.674*se_pic) %>%
+  mutate(q75_zey = beta_zey + 0.674*se_zey)
+
+# reorder columns
+n <- c(13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
+
+effects <- cbind(effects, n)
+effects <- effects[order(n), ]
+
+
+```
+
+###### 2. Create the plots
+
+```{r}
+
+tiff("D:/RESEARCH/leeches/Figures/FigS11.tiff",
+     height = 5, width = 4,
+     units = "in",
+     res = 330)
+
+n <- effects$n
+
+par(mfrow = c(2,1),
+    par(mar = c(2, 1.5, 1, 0),
+        oma = c(0, 4, 0, 0.1)))
+
+## A. H. picta
+
+
+plot(n ~ exp(effects$beta_pic), 
+     col = "orange",
+     pch = 16,
+     cex = 0.8,
+     xlim = c(-0.0, 45),
+     ylim = c(1, 13.5),
+     ylab = "",
+     xlab = "",
+     yaxt = "n", xaxt = "n",
+     bty = 'n',
+     col.axis = "white", 
+     axes = F)
+
+segments(1, 0, 1, 13, lty = 2, lwd = 1)
+
+  # plot error bars
+for (i in 1:13) {
+segments(exp(effects$q2.5_pic[i]), effects$n[i], 
+         exp(effects$q97.5_pic[i]), effects$n[i],
+         lwd = 3, col = "orange")
+}
+
+axis(side = 1, 
+      at = c(0, 5, 10, 15, 20, 25, 30, 35, 40),
+      labels =  c("", "", "", "", "", "", "", "", ""),
+      cex.axis = 0.5,
+      las = 1, 
+      tcl = -0.2, #tick mark lengths; value is negative so they face outward
+      mpg = c(0,0,0))
+
+axis(side = 2, 
+      at = c(1:13),
+      labels =  c("Observer Jack", "Raining now", "Rained last night", "Rained yest.", "Rained day before yest.", "Soil is wet", "Soil is moist", "Montane", "Upland granite", "Lowland granite", "Lowland sandstone", "Alluvial bench", "Freshwater swamp"),
+      cex.axis = 0.5,
+      las = 1, 
+      mgp = c(0, 0.35, 0), #middle number is the only one that's relevant here: the spacing between ticks and tick labels
+      tcl = -0.2) 
+
+mtext("(a)",line = 0,
+       side = 3, at = 0,
+       cex = 0.7, adj = 0)
+mtext("      Tiger Leech",line = 0,
+       side = 3, at = 0,
+       cex = 0.7, adj = 0, font = 1)
+
+textxy(exp(effects$beta_pic), n, m = c(0,0), labs = round(exp(effects$beta_pic), digits = 2), 
+       offset = 0.9, cex = 0.4)
+
+## B. H. zeylenica
+
+plot(n ~ exp(effects$beta_zey), 
+     col = "chocolate4",
+     pch = 16,
+     cex = 0.8,
+     xlim = c(-0.0, 45),
+     ylim = c(1, 13.5),
+     ylab = "",
+     xlab = "",
+     yaxt = "n", xaxt = "n",
+     bty = 'n',
+     col.axis = "white")
+
+segments(1, 0, 1, 13, lty = 2, lwd = 1)
+
+  # plot error bars
+for (i in 1:13) {
+segments(exp(effects$q2.5_zey[i]), effects$n[i], 
+         exp(effects$q97.5_zey[i]), effects$n[i],
+         lwd = 3, col = "chocolate4")
+}
+
+axis(side = 2, 
+      at = c(1:13),
+      labels =  c("Observer Jack", "Raining now", "Rained last night", "Rained yest.", "Rained day before yest.", "Soil is wet", "Soil is moist", "Montane", "Upland granite", "Lowland granite", "Lowland sandstone", "Alluvial bench", "Freshwater swamp"),
+      cex.axis = 0.5,
+      las = 1,
+      mgp = c(0, 0.35, 0),
+      tcl = -0.2)
+
+mtext("(b)",line = 0,
+       side = 3, at = 0,
+       cex = 0.7, adj = 0)
+mtext("      Brown Leech",line = 0,
+       side = 3, at = 0,
+       cex = 0.7, adj = 0, font = 1)
+
+textxy(exp(effects$beta_zey), n, m = c(0,0), labs = round(exp(effects$beta_zey), digits = 2), 
+       offset = 0.9, cex = 0.4)
+
+axis(side = 1, 
+      at = c(0, 5, 10, 15, 20, 25, 30, 35, 40),
+      labels =  c("0", "5", "10", "15", "20", "25", "30", "35", "40"),
+      cex.axis = 0.5,
+      mgp = c(0, 0, 0), 
+      las = 1, 
+      tcl = -0.2) 
+
+mtext (side = 1, text = "Incidence Rate Ratios",
+       outer = FALSE, cex = 0.65, line = 0.8)
+
+
+dev.off()
+```
+
+
+#### Scatterplot of counts - using LATTICE
+
+```{r}
+
+library(lattice)
+
+tiff("D:/RESEARCH/leeches/Figures/Fig4.tiff",
+     height = 10, width = 5,
+     units = "in",
+     res = 330)
+
+table(d.p$H.picta)
+table(d.p$H.zeylanica)
+
+d.p$FT <- mapvalues(d.p$FT, 
+          from = c("3.AB",
+                 "2.FS",
+                 "5.LG",
+                 "4.LS",
+                 "7.MO",
+                 "1.PS",
+                 "6.UG"), 
+          to = c("AB",
+                   "FS",
+                   "LG",
+                   "LS",
+                   "MO",
+                   "PS",
+                   "UG"))
+
+xyplot(H.zeylanica ~ H.picta | FT, data = d.p, 
+       group = FT,
+       xlab = expression (paste("Counts of Tiger Leech")), 
+       ylab = expression (paste("Counts of Brown Leech")), 
+       cex = 0.5, 
+       pch = 16,
+       col = c("#0068374d"),
+       jitter.x = TRUE, #https://stackoverflow.com/questions/20523839/add-jittered-data-points-to-lattice-xyplot-with-error-bars
+       layout = c(1, 7),#for all panels to appear in a single column
+       type=c("p","r")) #adding a reg line
+
+```
